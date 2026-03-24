@@ -1,6 +1,5 @@
 const fs = require("fs");
 const path = require("path");
-const { DatabaseSync } = require("node:sqlite");
 const { Pool } = require("pg");
 
 let database;
@@ -15,6 +14,7 @@ const translatePlaceholders = (sql) => {
 };
 
 const createSqliteAdapter = (dbFilePath) => {
+  const { DatabaseSync } = require("node:sqlite");
   fs.mkdirSync(path.dirname(dbFilePath), { recursive: true });
 
   const sqlite = new DatabaseSync(dbFilePath);
@@ -252,6 +252,11 @@ const normalizeDatabaseUrl = () =>
 const shouldUseSqlite = () =>
   ["sqlite", "local"].includes(String(process.env.DB_CLIENT || "").trim().toLowerCase());
 
+const canFallbackToSqlite = () =>
+  ["1", "true", "yes"].includes(
+    String(process.env.ALLOW_SQLITE_FALLBACK || "").trim().toLowerCase()
+  );
+
 const getSqlitePath = () =>
   path.join(__dirname, "..", "data", process.env.SQLITE_DB_FILE || "appointment-system.db");
 
@@ -292,23 +297,35 @@ const connectDB = async () => {
   const databaseUrl = normalizeDatabaseUrl();
 
   if (!databaseUrl) {
-    return initializeSqlite("DATABASE_URL missing");
+    if (canFallbackToSqlite()) {
+      return initializeSqlite("DATABASE_URL missing");
+    }
+
+    throw new Error(
+      "DATABASE_URL is missing. Set your Supabase PostgreSQL connection string or explicitly enable SQLite fallback."
+    );
   }
 
   try {
     return await initializePostgres(databaseUrl);
   } catch (error) {
-    const canFallbackToSqlite =
+    const isNonProduction =
       String(process.env.NODE_ENV || "").trim().toLowerCase() !== "production";
 
-    if (canFallbackToSqlite && ["EACCES", "ENETUNREACH", "EHOSTUNREACH"].includes(error.code)) {
+    if (
+      isNonProduction &&
+      canFallbackToSqlite() &&
+      ["EACCES", "ENETUNREACH", "EHOSTUNREACH"].includes(error.code)
+    ) {
       console.warn(
         "PostgreSQL direct host is unreachable. Falling back to local SQLite for development."
       );
       return initializeSqlite("PostgreSQL unreachable");
     }
 
-    throw error;
+    throw new Error(
+      `PostgreSQL connection failed: ${error.message}. SQLite fallback is disabled, so the app will not switch databases silently.`
+    );
   }
 };
 

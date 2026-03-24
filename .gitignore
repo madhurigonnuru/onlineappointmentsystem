@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+server/firebaseServiceKey.json.json
+*.pem
+*.key
+
+# Build output
+dist/
+build/
+.vite/
+
+# Local databases and logs
+*.db
+*.db-shm
+*.db-wal
+*.log
+server/data/
+!server/data/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
